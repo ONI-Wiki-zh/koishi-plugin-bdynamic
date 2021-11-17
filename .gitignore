@@ -1,0 +1,15 @@
+# ide
+.idea
+.vscode
+
+# build data
+**/dist
+
+# run data
+.koishi
+data
+logs
+**/node_modules
+*.lock
+*.log
+*temp*

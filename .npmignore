@@ -1,0 +1,12 @@
+.git*
+/output
+/dest
+/config.yaml
+.idea
+.dockerignore
+Dockerfile
+/src
+.eslintrc.js
+.prettierrc
+webpack.config.js
+tsconfig.json
