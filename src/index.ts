@@ -358,7 +358,7 @@ function showDynamic(dynamic: DynamicItem): string {
   }
 }
 
-declare module 'koishi' {
+declare module 'koishi-core' {
   interface Tables {
     b_dynamic_user: BDynamicUser;
   }
