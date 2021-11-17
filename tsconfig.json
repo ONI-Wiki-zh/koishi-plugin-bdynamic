@@ -1,16 +1,14 @@
 {
   "compilerOptions": {
+    "rootDir": "src",
     "outDir": "dist",
     "module": "commonjs",
-    "target": "es2021",
+    "target": "ES2019",
     "esModuleInterop": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "declaration": true,
-    "sourceMap": true
   },
-  "compileOnSave": true,
-  "allowJs": true,
   "include": [
     "*.ts",
     "src/**/*.ts"

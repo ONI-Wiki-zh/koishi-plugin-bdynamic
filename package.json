@@ -3,16 +3,28 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "lint": "eslint . --fix",
-    "build": "webpack"
+    "build": "tsc"
   },
+  "typings": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "version": "0.0.2",
   "description": "Koishi B站动态推送插件",
   "main": "dist/index.js",
   "repository": "https://github.com/DDEle/koishi-plugin-bdynamic.git",
   "author": "DDElephant <andy-ding@outlook.com>",
   "license": "MIT",
+  "dependencies": {
+    "koishi-core": "^3.13.0",
+    "koishi-plugin-mongo": "^2.3.0",
+    "koishi-plugin-mysql": "^3.4.0",
+    "axios": "^0.24.0"
+  },
   "peerDependencies": {
-    "koishi": "^3.14.2"
+    "koishi-core": "^3.13.0",
+    "koishi-plugin-mongo": "^2.3.0",
+    "koishi-plugin-mysql": "^3.4.0"
   },
   "devDependencies": {
     "@types/node": "^16.11.7",
@@ -26,11 +38,5 @@
     "typescript": "^4.4.4",
     "webpack": "^5.64.1",
     "webpack-cli": "^4.9.1"
-  },
-  "dependencies": {
-    "axios": "^0.24.0",
-    "koishi": "^3.14.2",
-    "koishi-core": "^3.14.2",
-    "koishi-utils-schemagen": "^1.1.9"
   }
 }

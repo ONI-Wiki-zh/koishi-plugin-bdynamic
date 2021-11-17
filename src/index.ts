@@ -1,6 +1,8 @@
-import { Random, sleep, Logger, Context, template, segment } from 'koishi';
+import { Random, sleep, Logger, Context, template, segment } from 'koishi-core';
 import { Tables } from 'koishi-core';
 import axios from 'axios';
+import type { } from 'koishi-plugin-mongo'
+import type { } from 'koishi-plugin-mysql'
 
 const MOCK_HEADER = {
   'User-Agent':
