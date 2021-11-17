@@ -5,7 +5,7 @@
     "lint": "eslint . --fix",
     "build": "webpack"
   },
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Koishi B站动态推送插件",
   "main": "dist/index.js",
   "repository": "https://github.com/DDEle/koishi-plugin-bdynamic.git",
@@ -15,6 +15,7 @@
     "koishi": "^3.14.2"
   },
   "devDependencies": {
+    "@types/node": "^16.11.7",
     "@typescript-eslint/eslint-plugin": "^5.4.0",
     "@typescript-eslint/parser": "^5.4.0",
     "eslint": "^8.2.0",
@@ -27,6 +28,8 @@
     "webpack-cli": "^4.9.1"
   },
   "dependencies": {
-    "axios": "^0.24.0"
+    "axios": "^0.24.0",
+    "koishi": "^3.14.2",
+    "koishi-core": "^3.14.2"
   }
 }
