@@ -11,6 +11,10 @@
   ],
   "version": "0.1.0",
   "description": "Koishi B站动态推送插件",
+  "keywords": [
+    "koishi",
+    "koishi.js"
+  ],
   "main": "dist/index.js",
   "repository": "https://github.com/DDEle/koishi-plugin-bdynamic.git",
   "author": "DDElephant <andy-ding@outlook.com>",

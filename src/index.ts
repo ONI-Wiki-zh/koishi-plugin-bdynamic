@@ -1,316 +1,515 @@
-import { Logger, Context, template, segment, Tables } from 'koishi';
-import { DynamicItem, DynamicTypeFlag, DynamicFeeder } from './bdFeeder';
+// From https://github.com/Wjghj-Project/Chatbot-SILI/blob/master/core/src/modules/discordLink.js
+
+import { Context, Session, Logger, segment } from 'koishi-core';
+import { DiscordBot } from 'koishi-adapter-discord';
 
 const logger = new Logger('bDynamic');
 
-interface StrictConfig {
-  pollInterval: number;
-  pageLimit: number;
-}
-export type Config = Partial<StrictConfig>;
+type Optional<T, K extends keyof T> = Pick<Partial<T>, K> & Omit<T, K>;
 
-declare module 'koishi' {
-  interface Tables {
-    b_dynamic_user: BDynamicUser;
-  }
-  interface Channel {
-    bDynamics?: Record<string, BDynamic>;
-  }
-}
-export interface BDynamicUser {
-  uid: string;
-  latestDynamic: string;
-  username: string;
-}
-Tables.extend('b_dynamic_user', {
-  uid: 'string',
-  latestDynamic: 'string',
-  username: 'string',
-});
-export interface BDynamic {
-  uid: string;
-  flag: number;
-  follower: string[];
-}
-Tables.extend('channel', {
-  bDynamics: 'json',
-});
+type QQConfigStrict = {
+  platform: 'onebot';
+  usePrefix: true;
+  msgPrefix: string;
+  channelId: string;
+  botId: string;
+};
+export type QQConfig = Optional<QQConfigStrict, 'msgPrefix'>;
 
-template.set('bDynamic', {
-  desc: 'bilibili 动态订阅',
-  hint: '请使用 uid 进行操作。',
-
-  user: '{0} (UID {1})',
-
-  add: '订阅动态',
-  'add-success': '成功订阅用户 {0} ！',
-  'add-duplicate': '本群已经订阅了用户 {0}。',
-
-  remove: '取消动态订阅',
-  'remove-success': '成功取消订阅用户 {0}。',
-  'id-not-subs': '本群没有订阅用户 {0} 的动态。',
-
-  list: '查看已订阅的动态',
-  'list-prologue': '本群已订阅的动态有：\n',
-  'list-prologue-paging': '本群已订阅的动态有（第 {0}/{1} 页）：\n',
-  'list-empty': '本群没有订阅动态。',
-
-  'post-type-forward': '{0} 转发了动态：\n{1}\n链接：{2}\n===源动态===\n{3}',
-  'post-type-new': '{0} 发布了新动态：\n{1}\n链接：{2}',
-  'post-type-video': '{0} 投稿了新视频：\n{1}\n链接：{2}',
-  'post-type-article': '{0} 投稿了新专栏：\n{1}\n链接：{2}',
-  'post-type-undefined': '{0} 发布了新动态：不支持的动态类型 {1}\n链接：{2}',
-
-  'error-network': '发生了网络错误，请稍后再尝试。',
-  'error-unknown': '发生了未知错误，请稍后再尝试。',
-});
-
-const flagName: Record<string, DynamicTypeFlag> = {
-  转发: DynamicTypeFlag.forward,
-  图片: DynamicTypeFlag.image,
-  文字: DynamicTypeFlag.text,
-  视频: DynamicTypeFlag.video,
-  专栏: DynamicTypeFlag.article,
-  其他: DynamicTypeFlag.others,
+type DiscordConfigStrict = {
+  platform: 'discord';
+  usePrefix: boolean;
+  msgPrefix: string;
+  channelId: string;
+  botId: string;
+  webhookID: string;
+  webhookToken: string;
+};
+export type DiscordConfig = Optional<
+  DiscordConfigStrict,
+  'msgPrefix' | 'usePrefix'
+>;
+const ptConfigDefault = {
+  onebot: {
+    platform: 'onebot',
+    msgPrefix: '[QQ]',
+    usePrefix: true,
+  },
+  discord: {
+    platform: 'discord',
+    msgPrefix: '[DC]',
+    usePrefix: false,
+  },
 };
 
-function showDynamic(dynamic: DynamicItem): string {
-  switch (dynamic.type) {
-    case DynamicTypeFlag.forward: {
-      return template(
-        'bDynamic.post-type-forward',
-        dynamic.username,
-        dynamic.content,
-        dynamic.url,
-        showDynamic(dynamic.origin),
-      );
+export type LinkConfig = (QQConfig | DiscordConfig)[];
+export type Config = {
+  /**
+   * number of recent messages kept in memory for reply and deletion
+   * @defaultValue 1000
+   */
+  recent?: number;
+  links: LinkConfig[];
+};
+
+type RelayedMsgs = {
+  channelId: string;
+  botId: string;
+  msgId: string;
+}[];
+
+/**
+ * Recent message storage
+ */
+class RecentMsgs {
+  // channelId => messageId => relayedMsgs
+  msgs: Record<
+    string,
+    {
+      recent: string[];
+      record: Record<string, RelayedMsgs>;
     }
-    case DynamicTypeFlag.image: {
-      let images = dynamic.imgs
-        .map((img) => segment('image', { url: img }))
-        .slice(0, 2)
-        .join('\n');
-      if (dynamic.imgs.length > 2) images += `等 ${dynamic.imgs.length} 张图片`;
-      return template(
-        'bDynamic.post-type-new',
-        dynamic.username,
-        dynamic.desc + '\n' + images,
-        dynamic.url,
-      );
+  > = {};
+
+  // channelId => messageId => orig message
+  msgMap: Record<string, Record<string, { channelId: string; msgId: string }>> =
+    {};
+
+  /**
+   * 获取一条消息的所有被转发版本
+   * @param channelId 这条消息的频道（带平台）
+   * @param msgId 这图消息的 id
+   * @returns 这条消息的所有被转发记录
+   */
+  get(channelId: string, msgId: string): RelayedMsgs | undefined {
+    return this.msgs[channelId]?.record[msgId];
+  }
+
+  /**
+   * 获取一条被转发的消息的原始消息
+   * @param channelId 被转发的频道（带平台）
+   * @param msgId 被转发后消息的 id
+   */
+  getOrigin(
+    channelId: string,
+    msgId: string,
+  ): { channelId: string; msgId: string } | undefined {
+    return this.msgMap[channelId]?.[msgId];
+  }
+
+  /**
+   * 保存转发记录
+   * @param channelId 原消息频道（带平台）
+   * @param msgId 原消息 id
+   * @param relayed 转发记录
+   */
+  push(channelId: string, msgId: string, relayed: RelayedMsgs): void {
+    if (!this.msgs[channelId]) {
+      this.msgs[channelId] = { recent: [], record: {} };
     }
-    case DynamicTypeFlag.text: {
-      return template(
-        'bDynamic.post-type-new',
-        dynamic.username,
-        dynamic.content,
-        dynamic.url,
-      );
+    this.msgs[channelId].recent.push(msgId);
+    this.msgs[channelId].record[msgId] = relayed;
+
+    for (const rMsg of relayed) {
+      if (!this.msgMap[rMsg.channelId]) this.msgMap[rMsg.channelId] = {};
+      this.msgMap[rMsg.channelId][rMsg.msgId] = { channelId, msgId };
     }
-    case DynamicTypeFlag.video: {
-      const cover = segment('image', { url: dynamic.videoCover });
-      return template(
-        'bDynamic.post-type-video',
-        dynamic.username,
-        [dynamic.text, cover, dynamic.videoTitle, dynamic.videoDesc].join('\n'),
-        dynamic.videoUrl,
-      );
+    if (this.msgs[channelId].recent.length > this.limit) {
+      const deletedMsgId = this.msgs[channelId]?.recent?.shift();
+      if (deletedMsgId) {
+        const records = this.msgs[channelId].record[deletedMsgId];
+        records.forEach((r) => {
+          if (this.msgMap[r.channelId]?.[r.msgId])
+            delete this.msgMap[r.channelId][r.msgId];
+        });
+        delete this.msgs[channelId].record[deletedMsgId];
+      }
     }
-    case DynamicTypeFlag.article: {
-      const imgs = dynamic.imgs.map((img) => segment('image', { url: img }));
-      return template(
-        'bDynamic.post-type-article',
-        dynamic.username,
-        [dynamic.title, ...imgs, dynamic.summary].join('\n'),
-        dynamic.articleUrl,
-      );
+    logger.debug('添加消息记录', channelId, msgId, relayed);
+  }
+
+  constructor(public limit: number) {}
+}
+export function apply(ctx: Context, config: Config): void {
+  config.links = config.links.filter((l) => l.length >= 2);
+  config.recent = config.recent || 1000;
+  const recentMsgs = new RecentMsgs(config.recent);
+
+  const webhookIDs: string[] = config.links.flatMap((link) => {
+    const ids: string[] = [];
+    for (const channel of link) {
+      if (channel.platform == 'discord') ids.push(channel.webhookID);
     }
-    case DynamicTypeFlag.others: {
-      return template(
-        'bDynamic.post-type-undefined',
-        dynamic.username,
-        dynamic.typeCode,
+    return ids;
+  });
+  ctx // 不响应转发的DC消息（有些还是过滤不掉所以后面有重新检测）
+    .middleware((session, next) => {
+      if (session.platform == 'discord') {
+        const userId = session?.author?.userId;
+        if (userId && webhookIDs.includes(userId)) return;
+      }
+      return next();
+    }, true /* true 表示这是前置中间件 */);
+
+  const prefixes: string[] = config.links.flatMap((link) =>
+    link.map(
+      (channel) =>
+        channel.msgPrefix || ptConfigDefault[channel.platform].msgPrefix,
+    ),
+  );
+
+  config.links.forEach((linked) => {
+    linked.forEach((partialChannelConf, i) => {
+      const channelPlatform: 'onebot' | 'discord' = partialChannelConf.platform;
+      const channelConf: QQConfigStrict | DiscordConfigStrict = {
+        ...ptConfigDefault[channelPlatform],
+        ...partialChannelConf,
+      };
+      const destinations: (QQConfigStrict | DiscordConfigStrict)[] = linked
+        .filter((_, j) => i !== j)
+        .map((d) => ({ ...ptConfigDefault[d.platform], ...d }));
+
+      type relaySession = Session.Payload<'send' | 'message', unknown>;
+      const onQQ = async (session: relaySession): Promise<void> => {
+        const platform = session.platform;
+        if (!platform) return;
+        if (!session.content) return;
+        const relayed: RelayedMsgs = [];
+        for (const dest of destinations) {
+          try {
+            const prefix = channelConf.msgPrefix;
+            const msgId = await fromQQ(ctx, session, dest, prefix, prefixes);
+            if (msgId)
+              relayed.push({
+                channelId: `${dest.platform}:${dest.channelId}`,
+                botId: dest.botId,
+                msgId,
+              });
+          } catch (e) {
+            logger.warn('转发消息出错', e);
+          }
+        }
+        if (session.messageId) {
+          recentMsgs.push(
+            `${channelConf.platform}:${channelConf.channelId}`,
+            session.messageId,
+            relayed,
+          );
+        }
+      };
+
+      switch (channelPlatform) {
+        case 'onebot':
+          ctx // QQ 收到消息
+            .platform('onebot' as never)
+            .channel(channelConf.channelId)
+            .on('message/group', onQQ);
+          ctx // QQ 自己发消息
+            .platform('onebot' as never)
+            .channel(channelConf.channelId)
+            .on('send/group', onQQ);
+          ctx // QQ 撤回消息
+            .platform('onebot' as never)
+            .channel(channelConf.channelId)
+            .on('message-deleted/group', (session) => {
+              const deletedMsg = session.messageId;
+              const channelId = session.channelId;
+              const platform = session.platform;
+              if (!deletedMsg || !channelId || !platform) return;
+              const relayed = recentMsgs.get(
+                `${platform}:${channelId}`,
+                deletedMsg,
+              );
+              if (!relayed) return;
+              relayed.forEach((record) => {
+                const platform = record.channelId.split(':')[0];
+                const bot = ctx.getBot(platform as never, record.botId);
+                bot.deleteMessage(record.channelId, record.msgId);
+                logger.info('撤回消息：', record.channelId, record.msgId);
+              });
+            });
+          break;
+        case 'discord':
+          ctx // Discord 收到消息
+            .platform('discord' as never)
+            .channel(channelConf.channelId)
+            .on('message/group', (session) => {
+              destinations.forEach((dest) => {
+                if (dest.platform === 'onebot')
+                  dc2qq(ctx, session, dest, channelConf.msgPrefix, webhookIDs);
+                else
+                  dc2dc(ctx, session, dest, channelConf.msgPrefix, webhookIDs);
+              });
+            });
+          ctx // Discord 自己发消息
+            .platform('discord' as never)
+            .channel(channelConf.channelId)
+            .on('send/group', (session) => {
+              destinations.forEach((dest) => {
+                if (dest.platform === 'onebot')
+                  dc2qq(ctx, session, dest, channelConf.msgPrefix, webhookIDs);
+                else
+                  dc2dc(ctx, session, dest, channelConf.msgPrefix, webhookIDs);
+              });
+            });
+          break;
+      }
+    });
+    logger.success(
+      linked.map((c) => `${c.platform}:${c.channelId}`).join(' ⇿ '),
+    );
+  });
+
+  async function fromQQ(
+    ctx: Context,
+    session: Session,
+    dest: QQConfigStrict | DiscordConfigStrict,
+    msgPrefix: string,
+    prefixes: string[],
+  ): Promise<string | undefined> {
+    const author = session.author;
+    const content = session.content;
+    const channelId = session.channelId;
+    const channelIdExtended = `${session.platform}:${channelId}`;
+    const messageId = session.messageId;
+    if (!content || !author || !channelId || !messageId) throw Error();
+    // 不转发转发的消息
+    if (author?.isBot !== false && prefixes.some((p) => content.startsWith(p)))
+      return;
+    const parsed = segment.parse(content);
+    const sender = `${author?.username || ''}（${
+      author?.userId || 'unknown'
+    }）`;
+    const prefix = dest.usePrefix ? msgPrefix : '';
+
+    if (dest.platform == 'onebot') {
+      let lastType = '';
+      const processed: segment[] = parsed.map((seg) => {
+        const onErr = function (msg: string): segment {
+          logger.warn(msg, seg);
+          return seg;
+        };
+        const lastTypeNow = lastType;
+        lastType = seg.type;
+        switch (seg.type) {
+          case 'text':
+          case 'image':
+            return seg;
+          case 'quote': {
+            const referred = seg.data['id'];
+            if (!referred) return onErr('引用消息段无被引用消息');
+            const relayed = recentMsgs.get(channelIdExtended, referred);
+            if (relayed) {
+              // 引用的是一则本地消息（但大概率被转发过）
+              const relayInDest = relayed.filter(
+                (r) => r.channelId == `${dest.platform}:${dest.channelId}`,
+              )[0];
+              if (relayInDest)
+                return { ...seg, data: { id: relayInDest.msgId } };
+              else return onErr('找不到目标频道的原消息转发');
+            } else {
+              // 引用的是一则从其他频道而来的消息
+              const orig = recentMsgs.getOrigin(channelIdExtended, referred);
+              if (!orig)
+                return onErr(
+                  `找不到引用消息引用源 ${channelIdExtended} ${referred}`,
+                );
+              if (orig.channelId == `${dest.platform}:${dest.channelId}`)
+                return { ...seg, data: { id: orig.msgId } };
+              else {
+                const relayed = recentMsgs.get(orig.channelId, orig.msgId);
+                if (!relayed) return onErr('引用消息源未被转发');
+                const relayInDest = relayed.filter(
+                  (r) => r.channelId == `${dest.platform}:${dest.channelId}`,
+                )[0];
+                if (!relayInDest) return onErr('引用消息源未被转发到目标频道');
+                return { ...seg, data: { id: relayInDest.msgId } };
+              }
+            }
+          }
+          case 'text':
+          case 'image':
+            return seg;
+          case 'at': // QQ 的 quote 后必自带一个 at
+            if (lastTypeNow == 'quote')
+              return { type: 'text', data: { content: '' } };
+          default:
+            return seg;
+        }
+      });
+
+      const [msgId] = await ctx.broadcast(
+        [`onebot:${dest.channelId}`],
+        `${prefix}${sender}：\n${segment.join(processed)}`,
       );
+      logger.info(
+        '⇿',
+        `${msgPrefix} 信息已推送到 ${dest.msgPrefix}`,
+        sender,
+        session.content,
+      );
+      return msgId;
+    } else {
+      const message: string = resolveBrackets(content);
+      let send = '';
+      if (/\[cq:image,.+\]/gi.test(message)) {
+        const image = message.replace(
+          /(.*?)\[cq:image.+,url=(.+?)\](.*?)/gi,
+          '$1 $2 $3',
+        );
+        send += image;
+      } else {
+        send += message;
+      }
+      send = send.replace(/\[cq:at,qq=(.+?)\]/gi, '`@$1`');
+
+      const replayMsgRaw = /\[cq:reply.+\]/i.exec(message);
+      if (replayMsgRaw) {
+        let replyMsg = '';
+        const replySeg = segment.parse(replayMsgRaw[0]);
+        const replyId = replySeg?.[0]?.data?.id || '';
+        const replyMeta = await session.bot.getMessage(channelId, replyId);
+        const replyAuthor = replyMeta.author;
+
+        const replyTime =
+            (replyMeta.timestamp !== undefined &&
+              new Date(replyMeta.timestamp)) ||
+            undefined,
+          replyDate = `${replyTime?.getHours()}:${replyTime?.getMinutes()}`;
+
+        replyMsg = replyMeta.content || '';
+        replyMsg = resolveBrackets(replyMsg);
+        replyMsg = replyMsg.split('\n').join('\n> ');
+        replyMsg = '> ' + replyMsg + '\n';
+        replyMsg =
+          `> **__回复 ${
+            replyAuthor?.nickname || replyAuthor?.username
+          } 在 ${replyDate} 的消息__**\n` + replyMsg;
+        send = send.replace(/\[cq:reply.+?\]/i, replyMsg);
+      }
+
+      // 安全性问题
+      send = send
+        .replace(/(?<!\\)@everyone/g, '\\@everyone')
+        .replace(/(?<!\\)@here/g, '\\@here');
+      send = prefix + send;
+
+      let nickname = '';
+      const id = author.userId;
+      nickname += session?.author?.username || '[UNKNOWN_USER_NAME]';
+      nickname += ' (' + id + ')';
+
+      const bot = ctx.bots.filter(
+        (b) => b.platform == 'discord' && b.selfId == dest.botId,
+      )[0];
+
+      if (bot?.platform == 'discord') {
+        const [msgId] = await (bot as unknown as DiscordBot)?.$executeWebhook(
+          dest.webhookID,
+          dest.webhookToken,
+          {
+            content: send,
+            username: nickname,
+            avatar_url: `http://q1.qlogo.cn/g?b=qq&nk=${id}&s=640`,
+          },
+          true,
+        );
+        const info = `${msgPrefix} 信息已推送到 ${dest.msgPrefix}`;
+        logger.info('⇿', info, nickname, send);
+        return msgId;
+      } else {
+        logger.warn('没有可用的 Discord 机器人', nickname, send);
+      }
+      throw Error();
     }
   }
 }
 
-export const name = 'bDynamic';
-export function apply(ctx: Context, userConfig: Config = {}): void {
-  const config: StrictConfig = {
-    pollInterval: 20 * 1000,
-    pageLimit: 10,
-    ...userConfig,
-  };
-  let feeder: DynamicFeeder = undefined;
-  async function subscribe(
-    uid: string,
-    channelId: string,
-    flags: number,
-  ): Promise<string> {
-    const { username } = await feeder.onNewDynamic(
-      uid,
-      channelId,
-      async (di) => {
-        if (di.type & flags) return;
-        ctx.broadcast([channelId], showDynamic(di));
-      },
-    );
+function resolveBrackets(s: string): string {
+  return s
+    .replace(new RegExp('&#91;', 'g'), '[')
+    .replace(new RegExp('&#93;', 'g'), ']')
+    .replace(new RegExp('&amp;', 'g'), '&');
+}
 
-    logger.info(`Subscribed username ${username} in channel ${channelId}`);
-    return template('bDynamic.add-success', username);
-  }
+async function dc2qq(
+  ctx: Context,
+  session: Session,
+  config: QQConfigStrict,
+  msgPrefix: string,
+  webhookIDs: string[],
+): Promise<string | undefined> {
+  const author = session.author;
+  const content = session.content;
+  if (author?.userId && webhookIDs.includes(author?.userId)) return;
+  if (!content) throw Error();
+  if (/(%disabled%|__noqq__)/i.test(content)) return;
+  if (/^\[qq\]/i.test(content)) return;
 
-  function unsubscribe(uid: string, channelId: string): boolean {
-    return feeder.removeCallback(uid, channelId);
-  }
+  const sender = `${author?.nickname || author?.username}#${
+    author?.discriminator || '0000'
+  }`;
 
-  ctx.on('disconnect', () => {
-    feeder.destroy();
-  });
+  const msg = `${msgPrefix} ${sender}：\n${content}`;
+  logger.info('⇿', 'Discord 信息已推送到 QQ', sender, session.content);
+  const [msgId] = await ctx.broadcast(['onebot:' + config.channelId], msg);
+  return msgId;
+}
 
-  ctx.on('connect', async () => {
-    feeder = new DynamicFeeder(config.pollInterval, (uid, username, latest) => {
-      ctx.database.upsert('b_dynamic_user', [
-        { uid, username, latestDynamic: latest },
-      ]);
-    });
-    const bUsers = await ctx.database.get('b_dynamic_user', {});
-    const channels = await ctx.database.get('channel', {}, ['id', 'bDynamics']);
-    for (const { uid, latestDynamic, username } of bUsers) {
-      feeder.followed[uid] = { latestDynamic, username, cbs: {} };
+async function dc2dc(
+  ctx: Context,
+  session: Session,
+  config: DiscordConfigStrict,
+  msgPrefix: string,
+  webhookIDs: string[],
+): Promise<string | undefined> {
+  const author = session.author;
+  const content = session.content;
+  if (!author || !content) throw Error();
+  if (webhookIDs.includes(author.userId)) return;
+  const prefix = config.usePrefix ? msgPrefix : '';
+
+  // 安全性问题
+  const contentSafe: string = content
+    .replace(/(?<!\\)@everyone/g, '\\@everyone')
+    .replace(/(?<!\\)@here/g, '\\@here');
+
+  const authorName = prefix + (author.nickname || author.username);
+  return await sendDC(ctx, config, authorName, author.avatar, contentSafe);
+}
+
+function sendDC(
+  ctx: Context,
+  config: DiscordConfigStrict,
+  username: string,
+  avatar_url: string | undefined,
+  content: string,
+): Promise<string> {
+  return new Promise((resolve, rejects) => {
+    const bot = ctx
+      .channel(config.channelId)
+      .getBot('discord', config.botId) as unknown as DiscordBot;
+    const webhookBody = { content, username, avatar_url };
+    if (bot) {
+      bot
+        .$executeWebhook(
+          config.webhookID,
+          config.webhookToken,
+          webhookBody,
+          true,
+        )
+        .then((msgId) => {
+          const info = `${msgId} 消息已推送到 ${config.msgPrefix}`;
+          logger.info('⇿', info, username, content);
+          resolve(msgId);
+        })
+        .catch((err) => {
+          const errMsg = `推送到 ${config.channelId} 失败：`;
+          logger.warn(errMsg, username, content, err);
+          rejects(err);
+        });
+    } else {
+      logger.warn('转发消息时没有可用的 Discord 机器人', username, content);
     }
-    for (const { id: cid, bDynamics } of channels) {
-      for (const uid in bDynamics) {
-        const { flag, follower } = bDynamics[uid];
-        subscribe(uid, cid, flag);
-      }
-    }
   });
-
-  ctx
-    .command('bDynamic', template('bDynamic.desc'))
-    .usage(template('bDynamic.hint'));
-
-  ctx
-    .command('bDynamic.add <uid>', template('bDynamic.add'), { authority: 2 })
-    .channelFields(['bDynamics'])
-    .action(async ({ session }, uid) => {
-      if (!uid) return session.execute('help bDynamic.add');
-      try {
-        const channel = session.channel;
-        if (!channel.bDynamics) {
-          channel.bDynamics = {};
-        }
-        if (channel.bDynamics[uid]) {
-          const raw = await ctx.database.get('b_dynamic_user', { uid }, [
-            'username',
-          ]);
-          return template(
-            'bDynamic.add-duplicate',
-            template('bDynamic.user', raw[0]?.username || '', uid),
-          );
-        }
-        const flag = 0;
-        const res = subscribe(
-          uid,
-          `${session?.platform}:${session?.channelId}`,
-          flag,
-        );
-        channel.bDynamics[uid] = { uid, flag, follower: [] };
-        ctx.database.create('b_dynamic_user', { uid }); // TODO: check if exist
-        return res;
-      } catch (err) {
-        logger.warn(err);
-        return template('bDynamic.error-unknown');
-      }
-    });
-
-  // ctx
-  // .command('bDynamic.change <uid> [...flags]', template('bDynamic.add'), { authority: 2 })
-  // .channelFields(['bDynamics'])
-
-  ctx
-    .command('bDynamic.remove <uid>', template('bDynamic.remove'), {
-      authority: 2,
-    })
-    .channelFields(['bDynamics'])
-    .action(async ({ session }, uid) => {
-      if (!uid) return session.execute('help bDynamic.remove');
-      try {
-        const channel = await session.observeChannel(['bDynamics']);
-        if (!channel.bDynamics) channel.bDynamics = {};
-
-        if (channel.bDynamics[uid]) {
-          delete channel.bDynamics[uid];
-          const { username } = (
-            await ctx.database.get('b_dynamic_user', { uid }, ['username'])
-          )[0];
-          unsubscribe(uid, session.channelId);
-          return template(
-            'bDynamic.remove-success',
-            template('bDynamic.user', username, uid),
-          );
-        }
-        return template('bDynamic.id-not-subs', uid);
-      } catch (err) {
-        logger.warn(err);
-        return template('bDynamic.error-unknown');
-      }
-    });
-
-  ctx
-    .command('bDynamic.list [page]', template('bDynamic.list'))
-    .channelFields(['bDynamics'])
-    .action(async ({ session }, page) => {
-      const cid = `${session.platform}:${session.channelId}`;
-      try {
-        const channel = (
-          await session.database.get(
-            'channel',
-            {
-              id: cid,
-            },
-            ['bDynamics'],
-          )
-        )[0];
-
-        if (!channel.bDynamics || !Object.keys(channel.bDynamics).length)
-          return template('bDynamic.list-empty');
-
-        let list: string[] = Object.keys(channel.bDynamics).sort();
-
-        let paging = false,
-          maxPage = 1;
-        if (list.length > config.pageLimit) {
-          paging = true;
-          maxPage = Math.ceil(list.length / config.pageLimit);
-          let pageNum = parseInt(page);
-          if (isNaN(pageNum) || pageNum < 1) pageNum = 1;
-          if (pageNum > maxPage) pageNum = maxPage;
-          list = list.slice(
-            (pageNum - 1) * config.pageLimit,
-            pageNum * config.pageLimit,
-          );
-        }
-        const bUsers = await ctx.database.get('b_dynamic_user', list, [
-          'uid',
-          'username',
-        ]);
-        const prologue = paging
-          ? template('bDynamic.list-prologue-paging', page, maxPage)
-          : template('bDynamic.list-prologue');
-
-        return (
-          prologue +
-          bUsers
-            .map(({ uid, username }) =>
-              template('bDynamic.user', username || '', uid),
-            )
-            .join('\n')
-        );
-      } catch (err) {
-        logger.warn(err);
-        return template('bDynamic.error-unknown');
-      }
-    });
 }

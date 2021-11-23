@@ -13,3 +13,4 @@ logs
 *.lock
 *.log
 *temp*
+tsconfig.tsbuildinfo

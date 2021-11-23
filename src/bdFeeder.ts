@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { sleep, Random, Logger } from 'koishi';
+import { sleep, Random, Logger } from 'koishi-core';
 
 const MOCK_HEADER = {
   'User-Agent':
@@ -76,19 +76,17 @@ type DFRecord = {
   latestDynamic: string;
   cbs: Record<string, newDynamicHandler>;
 };
-interface CardDescData {
-  type: number;
-  dynamic_id_str: string;
-  user_profile: {
-    info: {
-      uname: string;
-    };
+type CardData = {
+  desc: {
+    type: number;
+    dynamic_id_str: string;
+    user_profile: { info: { uname: string } };
+    bvid?: string;
+    orig_dy_id_str?: string;
   };
-}
-interface CardData {
-  desc: CardDescData;
   card: string;
-}
+};
+
 export class DynamicFeeder {
   followed: Record<string, DFRecord>;
   timer: NodeJS.Timer;
@@ -113,10 +111,9 @@ export class DynamicFeeder {
       headers: MOCK_HEADER,
     });
     if (data?.code != 0) {
-      logger.warn(
-        `Get bilibili user info uid ${uid}: code ${data?.code} error`,
-      );
-      return;
+      const warn = `Get bilibili user info uid ${uid}: code ${data?.code} error`;
+      logger.warn(warn);
+      throw Error(warn);
     }
     return data?.data?.name;
   }
@@ -159,8 +156,8 @@ export class DynamicFeeder {
     switch (dynamicType) {
       case DynamicTypeFlag.forward: //转发动态
         {
-          const originId = (card.desc as unknown as { orig_dy_id_str: string })
-            .orig_dy_id_str;
+          const originId = card.desc.orig_dy_id_str;
+          if (!originId) throw Error('转发动态没有被转发动态ID');
           const originCard = await this.getDynamicCard(originId);
           const content = unescape(details.item.content);
           dynamicItem = {
@@ -197,7 +194,7 @@ export class DynamicFeeder {
         break;
       case DynamicTypeFlag.video: //视频动态
         {
-          const bv = (card.desc as unknown as { bvid: string }).bvid;
+          const bv = card.desc.bvid;
           const text = unescape(details.dynamic);
           const videoTitle = unescape(details.title);
           const videoCover = unescape(details.pic);
@@ -296,7 +293,8 @@ export class DynamicFeeder {
   removeCallback(uid: string, recordId: string): boolean {
     if (this.followed[uid] == undefined) return false;
     if (this.followed[uid].cbs[recordId] == undefined) return false;
-    this.followed[uid].cbs[recordId] = undefined;
+    if (this.followed[uid]?.cbs[recordId])
+      delete this.followed[uid]?.cbs[recordId];
     return true;
   }
 
