@@ -1,5 +1,4 @@
-import { Logger, Context, template, segment } from 'koishi-core';
-import { Tables } from 'koishi-core';
+import { Logger, Context, template, segment, Tables } from 'koishi-core';
 import { DynamicItem, DynamicTypeFlag, DynamicFeeder } from './bdFeeder';
 
 const logger = new Logger('bDynamic');
@@ -187,6 +186,8 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
       feeder.followed[uid] = { latestDynamic, username, cbs: {} };
     }
     for (const { id: cid, bDynamics } of channels) {
+      // const realBDynamics: Record<string, BDynamic> = // To prevent some weird problems
+      //   typeof bDynamics == 'object' ? bDynamics : JSON.parse(bDynamics);
       for (const uid in bDynamics) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { flag, follower } = bDynamics[uid];
