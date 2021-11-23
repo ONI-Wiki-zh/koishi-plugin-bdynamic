@@ -16,7 +16,7 @@
     "koishi.js"
   ],
   "main": "dist/index.js",
-  "repository": "https://github.com/DDEle/koishi-plugin-bdynamic.git",
+  "repository": "https://github.com/ONI-Wiki-zh/koishi-plugin-bdynamic.git",
   "author": "DDElephant <andy-ding@outlook.com>",
   "license": "MIT",
   "dependencies": {
