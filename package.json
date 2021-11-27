@@ -9,7 +9,7 @@
   "files": [
     "dist"
   ],
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Koishi B站动态推送插件",
   "keywords": [
     "koishi",
