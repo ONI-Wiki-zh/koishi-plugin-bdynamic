@@ -20,6 +20,7 @@ declare module 'koishi-core' {
 export interface BDynamicUser {
   uid: string;
   latestDynamic: string;
+  latestDynamicTime: number;
   username: string;
 }
 Tables.extend('b_dynamic_user', {
@@ -28,6 +29,7 @@ Tables.extend('b_dynamic_user', {
     uid: 'string',
     latestDynamic: 'string',
     username: 'string',
+    latestDynamicTime: 'unsigned',
   },
 });
 export interface BDynamic {
@@ -175,19 +177,30 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
   });
 
   ctx.on('connect', async () => {
-    feeder = new DynamicFeeder(config.pollInterval, (uid, username, latest) => {
-      ctx.database.update('b_dynamic_user', [
-        { uid, username, latestDynamic: latest },
-      ]);
-    });
+    feeder = new DynamicFeeder(
+      config.pollInterval,
+      (uid, username, latest, latestTime) => {
+        ctx.database.update('b_dynamic_user', [
+          {
+            uid,
+            username,
+            latestDynamic: latest,
+            latestDynamicTime: latestTime,
+          },
+        ]);
+      },
+    );
     const bUsers = await ctx.database.get('b_dynamic_user', {});
     const channels = await ctx.database.get('channel', {}, ['id', 'bDynamics']);
-    for (const { uid, latestDynamic, username } of bUsers) {
-      feeder.followed[uid] = { latestDynamic, username, cbs: {} };
+    for (const { uid, latestDynamic, latestDynamicTime, username } of bUsers) {
+      feeder.followed[uid] = {
+        latestDynamic,
+        username,
+        cbs: {},
+        latestDynamicTime,
+      };
     }
     for (const { id: cid, bDynamics } of channels) {
-      // const realBDynamics: Record<string, BDynamic> = // To prevent some weird problems
-      //   typeof bDynamics == 'object' ? bDynamics : JSON.parse(bDynamics);
       for (const uid in bDynamics) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { flag, follower } = bDynamics[uid];
@@ -225,7 +238,10 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
         const combinedId = `${session?.platform}:${session?.channelId}`;
         const res = subscribe(uid, combinedId, flag);
         channel.bDynamics[uid] = { uid, flag, follower: [] };
-        ctx.database.create('b_dynamic_user', { uid }); // TODO: check if exist
+        if (
+          !(await ctx.database.get('b_dynamic_user', { uid }, ['uid'])).length
+        )
+          ctx.database.create('b_dynamic_user', { uid });
         return res;
       } catch (err) {
         logger.warn(err);
