@@ -14,3 +14,4 @@ logs
 *.log
 *temp*
 tsconfig.tsbuildinfo
+koishi-plugin-bdynamic*.tgz

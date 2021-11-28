@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { sleep, Random, Logger } from 'koishi-core';
+import { Logger, Random, sleep } from 'koishi-core';
 
 const MOCK_HEADER = {
   'User-Agent':
@@ -272,44 +272,40 @@ export class DynamicFeeder {
             );
             continue;
           }
-          const latestDynamic = data.data.cards[0];
-          const latestDynamicId = latestDynamic.desc.dynamic_id_str;
-          const latestDynamicTime: number = latestDynamic.desc.timestamp;
-          const username = latestDynamic.desc.user_profile.info.uname;
-          if (this.followed[uid].latestDynamic == latestDynamicId) {
-            if (this.followed[uid].latestDynamicTime != latestDynamicTime) {
+          const latest = data.data.cards[0];
+          const latestId = latest.desc.dynamic_id_str;
+          const latestTime: number = latest.desc.timestamp;
+          const username = latest.desc.user_profile.info.uname;
+          if (this.followed[uid].latestDynamic == latestId) {
+            if (this.followed[uid].latestDynamicTime < latestTime) {
+              // it's ok to put time later
               logger.warn(
-                `最新动态发布时间记录错误：latestDynamicId=${latestDynamicId}, latestDynamicTime=${latestDynamicTime}`,
+                `最新动态发布时间记录错误：latestDynamicId=${latestId}, latestDynamicTime=${latestTime}`,
               );
-              this.followed[uid].latestDynamicTime = latestDynamicTime;
-              updateLatestDynamicId(
-                uid,
-                username,
-                latestDynamicId,
-                latestDynamicTime,
-              );
+              this.followed[uid].latestDynamicTime = latestTime;
+              updateLatestDynamicId(uid, username, latestId, latestTime);
             }
             continue;
           }
-          if (this.followed[uid].latestDynamicTime >= latestDynamicTime) {
+          if (this.followed[uid].latestDynamicTime >= latestTime) {
             logger.warn(
-              `第一条动态不是最新动态：uid=${uid}, latestDynamicId=${latestDynamicId}`,
+              `第一条动态不是最新动态：uid=${uid}, latestDynamicId=${latestId}`,
+            );
+            this.followed[uid].latestDynamic = latestId;
+            updateLatestDynamicId(
+              uid,
+              username,
+              latestId,
+              this.followed[uid].latestDynamicTime,
             );
             continue;
           }
-          this.followed[uid].latestDynamic = latestDynamicId;
-          this.followed[uid].latestDynamicTime = latestDynamicTime;
+          this.followed[uid].latestDynamic = latestId;
+          this.followed[uid].latestDynamicTime = latestTime;
           logger.debug(`Find new Bilibili dynamic from ${username}`);
-          updateLatestDynamicId(
-            uid,
-            username,
-            latestDynamicId,
-            latestDynamicTime,
-          );
+          updateLatestDynamicId(uid, username, latestId, latestTime);
 
-          const dynamicItem: DynamicItem = await this.parseDynamicCard(
-            latestDynamic,
-          );
+          const dynamicItem: DynamicItem = await this.parseDynamicCard(latest);
           const cbs = this.followed[uid].cbs;
           for (const id in cbs) {
             cbs[id](dynamicItem);

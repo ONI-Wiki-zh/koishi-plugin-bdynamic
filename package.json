@@ -2,14 +2,14 @@
   "name": "koishi-plugin-bdynamic",
   "scripts": {
     "lint": "eslint . --fix",
-    "build": "tsc",
+    "build": "tsc --build --force",
     "watch": "tsc --watch"
   },
   "typings": "dist/index.d.ts",
   "files": [
     "dist"
   ],
-  "version": "0.1.5",
+  "version": "0.2.0",
   "description": "Koishi B站动态推送插件",
   "keywords": [
     "koishi",
