@@ -70,7 +70,7 @@ type DynamicItemBase = {
   raw: CardData;
 };
 export type DynamicItem = DynamicItemTypes & DynamicItemBase;
-type newDynamicHandler = (e: DynamicItem) => void;
+type newDynamicHandler = (e: DynamicItem) => Promise<void>;
 type DFRecord = {
   username: string;
   latestDynamic: string;
@@ -308,7 +308,7 @@ export class DynamicFeeder {
           const dynamicItem: DynamicItem = await this.parseDynamicCard(latest);
           const cbs = this.followed[uid].cbs;
           for (const id in cbs) {
-            cbs[id](dynamicItem);
+            await cbs[id](dynamicItem);
             await sleep(Random.int(1000, 2000));
           }
         }

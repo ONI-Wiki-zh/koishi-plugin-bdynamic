@@ -209,7 +209,7 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
             )
             .join('');
       if (followersMsg) followersMsg += '\n';
-      bot.sendMessage(channelId, followersMsg + dStr);
+      await bot.sendMessage(channelId, followersMsg + dStr);
     });
 
     logger.info(`Subscribed username ${username} in channel ${cid}`);
