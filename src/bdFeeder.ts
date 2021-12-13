@@ -75,7 +75,7 @@ type DFRecord = {
   username: string;
   latestDynamic: string;
   latestDynamicTime: number;
-  cbs: Record<string, newDynamicHandler>;
+  cbs: Record<string, Record<string, newDynamicHandler>>; // cbs[platform][channelId]
 };
 type CardData = {
   desc: {
@@ -94,7 +94,8 @@ export class DynamicFeeder {
 
   async onNewDynamic(
     uid: string,
-    recordId: string,
+    platform: string,
+    channelId: string,
     cb: newDynamicHandler,
   ): Promise<Omit<DFRecord, 'cbs'>> {
     if (this.followed[uid] == undefined) {
@@ -106,7 +107,9 @@ export class DynamicFeeder {
         cbs: {},
       };
     }
-    this.followed[uid].cbs[recordId] = cb;
+    if (!this.followed[uid].cbs[platform])
+      this.followed[uid].cbs[platform] = {};
+    this.followed[uid].cbs[platform][channelId] = cb;
     const { username, latestDynamic, latestDynamicTime } = this.followed[uid];
     return { username, latestDynamic, latestDynamicTime };
   }
@@ -307,10 +310,11 @@ export class DynamicFeeder {
 
           const dynamicItem: DynamicItem = await this.parseDynamicCard(latest);
           const cbs = this.followed[uid].cbs;
-          for (const id in cbs) {
-            await cbs[id](dynamicItem);
-            await sleep(Random.int(1000, 2000));
-          }
+          for (const platform in cbs)
+            for (const channelId in cbs[platform]) {
+              await cbs[platform][channelId](dynamicItem);
+              await sleep(Random.int(1000, 2000));
+            }
         }
       }).bind(this),
       pollInterval,

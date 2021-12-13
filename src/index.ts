@@ -1,6 +1,6 @@
-import { Context, Logger, segment, Tables, template } from 'koishi';
-import { DynamicFeeder, DynamicItem, DynamicTypeFlag } from './bdFeeder';
 import { OneBotBot } from '@koishijs/plugin-adapter-onebot';
+import { Context, Logger, Schema, segment, template } from 'koishi';
+import { DynamicFeeder, DynamicItem, DynamicTypeFlag } from './bdFeeder';
 
 const logger = new Logger('bDynamic');
 
@@ -9,6 +9,14 @@ interface StrictConfig {
   pageLimit: number;
 }
 export type Config = Partial<StrictConfig>;
+export const Config = Schema.object({
+  pollInterval: Schema.number()
+    .default(20 * 1000)
+    .description('访问 B 站 API 的间隔时间，单位毫秒'),
+  pageLimit: Schema.number()
+    .default(10)
+    .description('查询已订阅 up 主时每一页的条数'),
+});
 
 declare module 'koishi' {
   interface Tables {
@@ -142,7 +150,8 @@ function showDynamic(dynamic: DynamicItem): string {
 }
 
 export const name = 'bDynamic';
-export function apply(ctx: Context, userConfig: Config = {}): void {
+export const using = ['database'];
+export function apply(ctx: Context, config: StrictConfig): void {
   ctx.model.extend(
     'b_dynamic_user',
     {
@@ -158,42 +167,32 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
     bDynamics: 'json',
   });
 
-  const config: StrictConfig = {
-    pollInterval: 20 * 1000,
-    pageLimit: 10,
-    ...userConfig,
-  };
   let feeder: DynamicFeeder;
   async function subscribe(
     uid: string,
+    platform: string,
     cid: string,
     flags: number,
     assignee: string,
   ): Promise<string> {
-    const { username } = await feeder.onNewDynamic(uid, cid, async (di) => {
+    const record = await feeder.onNewDynamic(uid, platform, cid, async (di) => {
       if (di.type & flags) return;
       const dStr = showDynamic(di);
 
-      const [platform, channelId] = cid.split(':');
       const bot = ctx.bots.filter((b) => b.selfId === assignee)[0];
-      const channel = await ctx.database.getChannel(
-        platform as never,
-        channelId,
-      );
+      const channel = await ctx.database.getChannel(platform as never, cid);
       const followers = channel.bDynamics?.[uid].follower || [];
       let atAll = false;
       if (followers.includes('all')) {
         if (bot.platform == 'onebot') {
           const oneBotBot = bot as unknown as OneBotBot;
-          const remain = await oneBotBot.internal.getGroupAtAllRemain(
-            channelId,
-          );
+          const remain = await oneBotBot.internal.getGroupAtAllRemain(cid);
           if (remain.can_at_all) {
             logger.warn(
               `剩余 @全体成员 次数：${remain.remain_at_all_count_for_uin}`,
             );
             atAll = true;
-          } else logger.warn(`无法在群 ${channelId} 内 @全体成员`);
+          } else logger.warn(`无法在群 ${cid} 内 @全体成员`);
         } else {
           atAll = true;
         }
@@ -209,11 +208,11 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
             )
             .join('');
       if (followersMsg) followersMsg += '\n';
-      await bot.sendMessage(channelId, followersMsg + dStr);
+      await bot.sendMessage(cid, followersMsg + dStr);
     });
 
-    logger.info(`Subscribed username ${username} in channel ${cid}`);
-    return template('bDynamic.add-success', username);
+    logger.info(`Subscribed username ${record.username} in channel ${cid}`);
+    return template('bDynamic.add-success', record.username);
   }
 
   function unsubscribe(uid: string, channelId: string): boolean {
@@ -221,10 +220,11 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
   }
 
   ctx.on('disconnect', () => {
-    feeder.destroy();
+    feeder?.destroy();
   });
 
   ctx.on('connect', async () => {
+    feeder?.destroy();
     feeder = new DynamicFeeder(
       config.pollInterval,
       (uid, username, latest, latestTime) => {
@@ -240,6 +240,7 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
     );
     const bUsers = await ctx.database.get('b_dynamic_user', {});
     const channels = await ctx.database.get('channel', {}, [
+      'platform',
       'id',
       'bDynamics',
       'assignee',
@@ -252,10 +253,10 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
         latestDynamicTime,
       };
     }
-    for (const { id: cid, bDynamics, assignee } of channels) {
+    for (const { platform, id: cid, bDynamics, assignee } of channels) {
       for (const uid in bDynamics) {
         const { flag } = bDynamics[uid];
-        subscribe(uid, cid, flag, assignee);
+        subscribe(uid, platform, cid, flag, assignee);
       }
     }
   });
@@ -266,11 +267,11 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
 
   ctx
     .command('bDynamic.add <uid>', template('bDynamic.add'), { authority: 2 })
-    .channelFields(['bDynamics', 'assignee'])
+    .channelFields(['bDynamics', 'assignee', 'id'])
     .action(async ({ session }, uid) => {
-      if (!session) return;
-      const channel = session.channel;
-      if (!channel) return;
+      const channel = session?.channel;
+      const platform = session?.platform;
+      if (!channel || !platform) return;
       if (!uid) return session.execute('help bDynamic.add');
       try {
         if (!channel.bDynamics) {
@@ -286,8 +287,13 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
           );
         }
         const flag = 0;
-        const combinedId = `${session?.platform}:${session?.channelId}`;
-        const res = subscribe(uid, combinedId, flag, channel.assignee);
+        const res = subscribe(
+          uid,
+          platform,
+          channel.id,
+          flag,
+          channel.assignee,
+        );
         channel.bDynamics[uid] = { uid, flag, follower: [] };
         if (
           !(await ctx.database.get('b_dynamic_user', { uid }, ['uid'])).length
@@ -370,14 +376,13 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
     })
     .channelFields(['bDynamics'])
     .action(async ({ session }, uid) => {
-      if (!session || !session.channelId) return;
+      if (!session || !session.channelId || !session.channel) return;
       if (!uid) return session.execute('help bDynamic.remove');
       try {
-        const channel = await session.observeChannel(['bDynamics']);
-        if (!channel.bDynamics) channel.bDynamics = {};
+        if (!session.channel.bDynamics) session.channel.bDynamics = {};
 
-        if (channel.bDynamics[uid]) {
-          delete channel.bDynamics[uid];
+        if (uid in session.channel.bDynamics) {
+          delete session.channel.bDynamics[uid];
           const { username } = (
             await ctx.database.get('b_dynamic_user', { uid }, ['username'])
           )[0];
