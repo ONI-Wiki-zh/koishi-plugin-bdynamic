@@ -2,7 +2,7 @@
 [![npm](https://img.shields.io/npm/v/koishi-plugin-bdynamic?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-bdynamic)
 [![npm-download](https://img.shields.io/npm/dw/koishi-plugin-bdynamic?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-bdynamic)
 
-用于 **[Koishi v3](https://github.com/koishijs/koishi)** 的 B 站动态（包括新视频、专栏等）订阅插件。
+用于 **[Koishi v4](https://github.com/koishijs/koishi)** 的 B 站动态（包括新视频、专栏等）订阅插件。
 
 ## 安装方法
 ```shell

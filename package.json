@@ -21,10 +21,10 @@
   "license": "MIT",
   "dependencies": {
     "axios": "^0.24.0",
-    "koishi-core": "^3.14.2"
+    "koishi": "next"
   },
   "peerDependencies": {
-    "koishi-core": "^3.14.2"
+    "koishi": "next"
   },
   "devDependencies": {
     "@types/node": "^16.11.7",
@@ -33,7 +33,7 @@
     "eslint": "^8.2.0",
     "eslint-config-prettier": "^8.3.0",
     "eslint-plugin-prettier": "^4.0.0",
-    "koishi-adapter-onebot": "^3.1.0",
+    "@koishijs/plugin-adapter-onebot": "next",
     "prettier": "^2.4.1",
     "ts-node": "^10.4.0",
     "typescript": "^4.4.4"
