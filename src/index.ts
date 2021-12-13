@@ -181,7 +181,7 @@ export function apply(ctx: Context, config: StrictConfig): void {
 
       const bot = ctx.bots.filter((b) => b.selfId === assignee)[0];
       const channel = await ctx.database.getChannel(platform as never, cid);
-      const followers = channel.bDynamics?.[uid].follower || [];
+      const followers = channel.bDynamics?.[uid]?.follower || [];
       let atAll = false;
       if (followers.includes('all')) {
         if (bot.platform == 'onebot') {

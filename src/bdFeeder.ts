@@ -168,7 +168,7 @@ export class DynamicFeeder {
           const originId = card.desc.orig_dy_id_str;
           if (!originId) throw Error('转发动态没有被转发动态ID');
           const originCard = await this.getDynamicCard(originId);
-          const content = unescape(details.item.content);
+          const content = details.item.content;
           dynamicItem = {
             type: dynamicType,
             ...dynamicItemBase,
@@ -179,9 +179,9 @@ export class DynamicFeeder {
         break;
       case DynamicTypeFlag.image: //图片动态
         {
-          const desc = unescape(details.item.description);
-          const imgs = details.item.pictures.map((p: { img_src: string }) =>
-            unescape(p.img_src),
+          const desc = details.item.description;
+          const imgs = details.item.pictures.map(
+            (p: { img_src: string }) => p.img_src,
           );
           dynamicItem = {
             type: dynamicType,
@@ -193,7 +193,7 @@ export class DynamicFeeder {
         break;
       case DynamicTypeFlag.text: //文字动态
         {
-          const content = unescape(details.item.content);
+          const content = details.item.content;
           dynamicItem = {
             type: dynamicType,
             ...dynamicItemBase,
@@ -204,10 +204,10 @@ export class DynamicFeeder {
       case DynamicTypeFlag.video: //视频动态
         {
           const bv = card.desc.bvid;
-          const text = unescape(details.dynamic);
-          const videoTitle = unescape(details.title);
-          const videoCover = unescape(details.pic);
-          const videoDesc = unescape(details.desc);
+          const text = details.dynamic;
+          const videoTitle = details.title;
+          const videoCover = details.pic;
+          const videoDesc = details.desc;
           const videoUrl = `https://b23.tv/${bv}`;
           dynamicItem = {
             type: dynamicType,
@@ -222,13 +222,13 @@ export class DynamicFeeder {
         break;
       case DynamicTypeFlag.article: //专栏动态
         {
-          const summary = unescape(details.summary);
+          const summary = details.summary;
           dynamicItem = {
             type: DynamicTypeFlag.article,
             ...dynamicItemBase,
-            title: unescape(details.title),
+            title: details.title,
             summary: IGNORED_SUMMARIES.includes(summary) ? '' : summary,
-            imgs: details.image_urls.map((p: string) => unescape(p)),
+            imgs: details.image_urls,
             articleUrl: `https://www.bilibili.com/read/cv${details.id}`,
           };
         }
