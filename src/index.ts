@@ -1,6 +1,6 @@
-import { CQBot } from 'koishi-adapter-onebot';
-import { Context, Logger, segment, Tables, template } from 'koishi-core';
+import { Context, Logger, segment, Tables, template } from 'koishi';
 import { DynamicFeeder, DynamicItem, DynamicTypeFlag } from './bdFeeder';
+import { OneBotBot } from '@koishijs/plugin-adapter-onebot';
 
 const logger = new Logger('bDynamic');
 
@@ -10,7 +10,7 @@ interface StrictConfig {
 }
 export type Config = Partial<StrictConfig>;
 
-declare module 'koishi-core' {
+declare module 'koishi' {
   interface Tables {
     b_dynamic_user: BDynamicUser;
   }
@@ -24,26 +24,11 @@ export interface BDynamicUser {
   latestDynamicTime: number;
   username: string;
 }
-Tables.extend('b_dynamic_user', {
-  primary: 'uid',
-  fields: {
-    uid: 'string',
-    latestDynamic: 'string',
-    username: 'string',
-    latestDynamicTime: 'unsigned',
-  },
-});
 export interface BDynamic {
   uid: string;
   flag: number;
   follower: string[];
 }
-Tables.extend('channel', {
-  fields: {
-    bDynamics: 'json',
-  },
-});
-
 template.set('bDynamic', {
   desc: 'bilibili 动态订阅',
   hint: '请使用 uid 进行操作。',
@@ -158,6 +143,21 @@ function showDynamic(dynamic: DynamicItem): string {
 
 export const name = 'bDynamic';
 export function apply(ctx: Context, userConfig: Config = {}): void {
+  ctx.model.extend(
+    'b_dynamic_user',
+    {
+      uid: 'string',
+      latestDynamic: 'string',
+      username: 'string',
+      latestDynamicTime: 'unsigned',
+    },
+    { primary: 'uid' },
+  );
+
+  ctx.model.extend('channel', {
+    bDynamics: 'json',
+  });
+
   const config: StrictConfig = {
     pollInterval: 20 * 1000,
     pageLimit: 10,
@@ -175,7 +175,7 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
       const dStr = showDynamic(di);
 
       const [platform, channelId] = cid.split(':');
-      const bot = ctx.getBot(platform as never, assignee);
+      const bot = ctx.bots.filter((b) => b.selfId === assignee)[0];
       const channel = await ctx.database.getChannel(
         platform as never,
         channelId,
@@ -184,13 +184,13 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
       let atAll = false;
       if (followers.includes('all')) {
         if (bot.platform == 'onebot') {
-          await import('koishi-adapter-onebot');
-          const remain = await (bot as unknown as CQBot).$getGroupAtAllRemain(
+          const oneBotBot = bot as unknown as OneBotBot;
+          const remain = await oneBotBot.internal.getGroupAtAllRemain(
             channelId,
           );
-          if (remain.canAtAll) {
+          if (remain.can_at_all) {
             logger.warn(
-              `剩余 @全体成员 次数：${remain.remainAtAllCountForUin}`,
+              `剩余 @全体成员 次数：${remain.remain_at_all_count_for_uin}`,
             );
             atAll = true;
           } else logger.warn(`无法在群 ${channelId} 内 @全体成员`);
@@ -220,7 +220,7 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
     return feeder.removeCallback(uid, channelId);
   }
 
-  ctx.before('disconnect', () => {
+  ctx.on('disconnect', () => {
     feeder.destroy();
   });
 
@@ -228,7 +228,7 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
     feeder = new DynamicFeeder(
       config.pollInterval,
       (uid, username, latest, latestTime) => {
-        ctx.database.update('b_dynamic_user', [
+        ctx.database.upsert('b_dynamic_user', [
           {
             uid,
             username,
@@ -304,11 +304,11 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
     .option('follower', '-f <follower> ', { authority: 2 })
     .channelFields(['bDynamics'])
     .action(async ({ session, options }, uid) => {
-      if (!session?.author || !session.groupId || !session.channel)
+      if (!session?.author || !session.guildId || !session.channel)
         throw new Error();
       let follower = session.author.userId;
-      const groupMemberList = await session.bot.getGroupMemberList(
-        session.groupId,
+      const groupMemberList = await session.bot.getGuildMemberList(
+        session.guildId,
       );
       const groupMemberRecord = groupMemberList.reduce(
         (a, v): Record<string, string> => ({
@@ -398,7 +398,7 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
     .command('bDynamic.list [page]', template('bDynamic.list'))
     .channelFields(['bDynamics'])
     .action(async ({ session }, page) => {
-      if (!session?.channel || !session.groupId) throw new Error();
+      if (!session?.channel || !session.guildId) throw new Error();
       try {
         const channel = session.channel;
         if (!channel.bDynamics || !Object.keys(channel.bDynamics).length)
@@ -427,7 +427,7 @@ export function apply(ctx: Context, userConfig: Config = {}): void {
           ? template('bDynamic.list-prologue-paging', pageNum, maxPage)
           : template('bDynamic.list-prologue');
 
-        const members = await session.bot.getGroupMemberList(session.groupId);
+        const members = await session.bot.getGuildMemberList(session.guildId);
         const memberRecord = members.reduce(
           (a, v): Record<string, string> => ({
             ...a,

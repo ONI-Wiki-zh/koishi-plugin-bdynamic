@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Logger, Random, sleep } from 'koishi-core';
+import { Logger, Random, sleep } from 'koishi';
 
 const MOCK_HEADER = {
   'User-Agent':
