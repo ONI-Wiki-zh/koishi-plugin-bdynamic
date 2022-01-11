@@ -9,7 +9,7 @@
   "files": [
     "dist"
   ],
-  "version": "1.0.0-beta.4",
+  "version": "1.0.0-rc.0",
   "description": "Koishi B站动态推送插件",
   "keywords": [
     "koishi",
@@ -21,13 +21,13 @@
   "license": "MIT",
   "dependencies": {
     "axios": "^0.24.0",
-    "koishi": "next"
+    "koishi": "^4.0.0-rc.3"
   },
   "peerDependencies": {
-    "koishi": "next"
+    "koishi": "^4.0.0-rc.3"
   },
   "devDependencies": {
-    "@koishijs/plugin-adapter-onebot": "next",
+    "@koishijs/plugin-adapter-onebot": "^4.0.0-rc.1",
     "@types/node": "^16.11.7",
     "@typescript-eslint/eslint-plugin": "^5.4.0",
     "@typescript-eslint/parser": "^5.4.0",
