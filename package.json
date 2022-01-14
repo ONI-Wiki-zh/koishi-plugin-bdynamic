@@ -21,13 +21,13 @@
   "license": "MIT",
   "dependencies": {
     "axios": "^0.24.0",
-    "koishi": "^4.0.0-rc.3"
+    "koishi": "^4.0.0"
   },
   "peerDependencies": {
-    "koishi": "^4.0.0-rc.3"
+    "koishi": "^4.0.0"
   },
   "devDependencies": {
-    "@koishijs/plugin-adapter-onebot": "^4.0.0-rc.1",
+    "@koishijs/plugin-adapter-onebot": "^4.0.0",
     "@types/node": "^16.11.7",
     "@typescript-eslint/eslint-plugin": "^5.4.0",
     "@typescript-eslint/parser": "^5.4.0",
