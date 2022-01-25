@@ -64,6 +64,9 @@ template.set('bDynamic', {
   'list-prologue-paging': '本群已订阅的动态有（第 {0}/{1} 页）：\n',
   'list-empty': '本群没有订阅动态。',
 
+  latest: '查看某 up 的最新动态',
+  'latest-failed': '查看动态失败。',
+
   'post-type-forward': '{0} 转发了动态：\n{1}\n链接：{2}\n===源动态===\n{3}',
   'post-type-new': '{0} 发布了新动态：\n{1}\n链接：{2}',
   'post-type-video': '{0} 投稿了新视频：\n{1}\n链接：{2}',
@@ -305,6 +308,7 @@ export function apply(ctx: Context, config: StrictConfig): void {
         return template('bDynamic.error-unknown');
       }
     });
+
   ctx
     .command('bDynamic.follow <uid>', template('bDynamic.follow'))
     .option('follower', '-f <follower> ', { authority: 2 })
@@ -323,7 +327,7 @@ export function apply(ctx: Context, config: StrictConfig): void {
         }),
         {} as Record<string, string>,
       );
-      const bUsername = await feeder.getUsername(uid);
+      const bUsername = await DynamicFeeder.getUsername(uid);
       if (options?.follower) {
         const parsed = segment.parse(options.follower);
         for (const seg of parsed) {
@@ -460,6 +464,16 @@ export function apply(ctx: Context, config: StrictConfig): void {
       } catch (err) {
         logger.warn(err);
         return template('bDynamic.error-unknown');
+      }
+    });
+
+  ctx
+    .command('bDynamic.latest <uid>', template('bDynamic.latest'))
+    .action(async ({}, uid): Promise<string> => {
+      try {
+        return showDynamic(await DynamicFeeder.latestDynamic(uid));
+      } catch {
+        return template('bDynamic.latest-failed');
       }
     });
 }

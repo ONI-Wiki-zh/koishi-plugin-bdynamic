@@ -99,7 +99,7 @@ export class DynamicFeeder {
     cb: newDynamicHandler,
   ): Promise<Omit<DFRecord, 'cbs'>> {
     if (this.followed[uid] == undefined) {
-      const username = await this.getUsername(uid);
+      const username = await DynamicFeeder.getUsername(uid);
       this.followed[uid] = {
         latestDynamic: '',
         latestDynamicTime: 0,
@@ -114,7 +114,7 @@ export class DynamicFeeder {
     return { username, latestDynamic, latestDynamicTime };
   }
 
-  async getUsername(uid: string): Promise<string> {
+  static async getUsername(uid: string): Promise<string> {
     const { data } = await axios.get(URLS.user, {
       params: { mid: uid, jsonp: 'jsonp' },
       headers: MOCK_HEADER,
@@ -127,7 +127,7 @@ export class DynamicFeeder {
     return data?.data?.name;
   }
 
-  async getDynamicCard(did: string): Promise<CardData> {
+  static async getDynamicCard(did: string): Promise<CardData> {
     return new Promise((resolve, reject) => {
       axios
         .get(URLS.detail, {
@@ -150,7 +150,7 @@ export class DynamicFeeder {
     });
   }
 
-  async parseDynamicCard(card: CardData): Promise<DynamicItem> {
+  static async parseDynamicCard(card: CardData): Promise<DynamicItem> {
     const latestDynamicId = card.desc.dynamic_id_str;
     const username = card.desc.user_profile.info.uname;
     const url = `https://t.bilibili.com/${latestDynamicId}`;
@@ -167,7 +167,7 @@ export class DynamicFeeder {
         {
           const originId = card.desc.orig_dy_id_str;
           if (!originId) throw Error('转发动态没有被转发动态ID');
-          const originCard = await this.getDynamicCard(originId);
+          const originCard = await DynamicFeeder.getDynamicCard(originId);
           const content = details.item.content;
           dynamicItem = {
             type: dynamicType,
@@ -247,6 +247,19 @@ export class DynamicFeeder {
     return dynamicItem;
   }
 
+  static async latestDynamic(uid: string): Promise<DynamicItem> {
+    const { data } = await axios.get(URLS.list, {
+      params: { host_uid: uid, offset_dynamic_id: '0' },
+      headers: MOCK_HEADER,
+    });
+    if (data?.code != 0)
+      throw new Error(
+        `Get bilibili dynamics list failed for uid ${uid}: code ${data?.code}`,
+      );
+    const latest = data.data.cards[0];
+    return await this.parseDynamicCard(latest);
+  }
+
   constructor(
     pollInterval: number,
     updateLatestDynamicId: (
@@ -308,7 +321,7 @@ export class DynamicFeeder {
           logger.debug(`Find new Bilibili dynamic from ${username}`);
           updateLatestDynamicId(uid, username, latestId, latestTime);
 
-          const dynamicItem: DynamicItem = await this.parseDynamicCard(latest);
+          const dynamicItem = await DynamicFeeder.parseDynamicCard(latest);
           const cbs = this.followed[uid].cbs;
           for (const platform in cbs)
             for (const channelId in cbs[platform]) {
