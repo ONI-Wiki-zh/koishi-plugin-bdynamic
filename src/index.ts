@@ -2,6 +2,7 @@ import { OneBotBot } from '@koishijs/plugin-adapter-onebot';
 import {} from '@koishijs/plugin-rate-limit';
 import { Context, Logger, Schema, segment, template, Time } from 'koishi';
 import { DynamicFeeder, DynamicItem, DynamicTypeFlag } from './bdFeeder';
+import { adminChannel } from '@koishijs/helpers';
 
 const logger = new Logger('bDynamic');
 
@@ -168,7 +169,7 @@ export function apply(ctx: Context, config: StrictConfig): void {
   );
 
   ctx.model.extend('channel', {
-    bDynamics: 'json',
+    bDynamics: { type: 'json', initial: {} },
   });
 
   let feeder: DynamicFeeder;
@@ -223,11 +224,11 @@ export function apply(ctx: Context, config: StrictConfig): void {
     return feeder.removeCallback(uid, channelId);
   }
 
-  ctx.on('disconnect', () => {
+  ctx.on('dispose', () => {
     feeder?.destroy();
   });
 
-  ctx.on('connect', async () => {
+  ctx.on('ready', async () => {
     feeder?.destroy();
     feeder = new DynamicFeeder(
       config.pollInterval,
@@ -272,6 +273,7 @@ export function apply(ctx: Context, config: StrictConfig): void {
   ctx
     .command('bDynamic.add <uid>', template('bDynamic.add'), { authority: 2 })
     .channelFields(['bDynamics', 'assignee', 'id'])
+    .use(adminChannel)
     .action(async ({ session }, uid) => {
       const channel = session?.channel;
       const platform = session?.platform;
@@ -314,6 +316,7 @@ export function apply(ctx: Context, config: StrictConfig): void {
     .command('bDynamic.follow <uid>', template('bDynamic.follow'))
     .option('follower', '-f <follower> ', { authority: 2 })
     .channelFields(['bDynamics'])
+    .use(adminChannel)
     .action(async ({ session, options }, uid) => {
       if (!session?.author || !session.guildId || !session.channel)
         throw new Error();
@@ -380,6 +383,7 @@ export function apply(ctx: Context, config: StrictConfig): void {
       authority: 2,
     })
     .channelFields(['bDynamics'])
+    .use(adminChannel)
     .action(async ({ session }, uid) => {
       if (!session || !session.channelId || !session.channel) return;
       if (!uid) return session.execute('help bDynamic.remove');

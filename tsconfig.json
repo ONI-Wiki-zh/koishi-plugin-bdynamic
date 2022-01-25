@@ -1,12 +1,11 @@
 {
   "compilerOptions": {
-    "rootDir": "src",
+    "rootDir": "",
     "outDir": "dist",
     "module": "commonjs",
     "target": "esnext",
     "declaration": true,
     "composite": true,
-    "incremental": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "moduleResolution": "node",
@@ -14,7 +13,7 @@
     "strict": true,
   },
   "include": [
-    "*.ts",
-    "src/**/*.ts"
-  ]
+    "src/**/*.ts",
+    "tests/**/*.ts",
+  ],
 }
