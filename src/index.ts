@@ -1,5 +1,6 @@
 import { OneBotBot } from '@koishijs/plugin-adapter-onebot';
-import { Context, Logger, Schema, segment, template } from 'koishi';
+import {} from '@koishijs/plugin-rate-limit';
+import { Context, Logger, Schema, segment, template, Time } from 'koishi';
 import { DynamicFeeder, DynamicItem, DynamicTypeFlag } from './bdFeeder';
 
 const logger = new Logger('bDynamic');
@@ -468,11 +469,14 @@ export function apply(ctx: Context, config: StrictConfig): void {
     });
 
   ctx
-    .command('bDynamic.latest <uid>', template('bDynamic.latest'))
+    .command('bDynamic.latest <uid>', template('bDynamic.latest'), {
+      minInterval: 10 * Time.second,
+    })
     .action(async ({}, uid): Promise<string> => {
       try {
         return showDynamic(await DynamicFeeder.latestDynamic(uid));
-      } catch {
+      } catch (e) {
+        logger.warn(e);
         return template('bDynamic.latest-failed');
       }
     });

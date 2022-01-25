@@ -20,6 +20,7 @@
   "author": "DDElephant <andy-ding@outlook.com>",
   "license": "MIT",
   "dependencies": {
+    "@koishijs/plugin-rate-limit": "^1.0.1",
     "axios": "^0.24.0",
     "koishi": "^4.0.0"
   },

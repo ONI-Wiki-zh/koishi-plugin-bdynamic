@@ -256,7 +256,16 @@ export class DynamicFeeder {
       throw new Error(
         `Get bilibili dynamics list failed for uid ${uid}: code ${data?.code}`,
       );
-    const latest = data.data.cards[0];
+    const latest = data.data.cards
+      .filter(
+        (x: { desc?: { timestamp?: any } }) => x?.desc?.timestamp != undefined,
+      )
+      .reduce(
+        (
+          x: { desc: { timestamp: number } },
+          y: { desc: { timestamp: number } },
+        ) => (x?.desc?.timestamp < y?.desc?.timestamp ? y : x),
+      );
     return await this.parseDynamicCard(latest);
   }
 
@@ -288,7 +297,17 @@ export class DynamicFeeder {
             );
             continue;
           }
-          const latest = data.data.cards[0];
+          const latest = data.data.cards
+            .filter(
+              (x: { desc?: { timestamp?: any } }) =>
+                x?.desc?.timestamp != undefined,
+            )
+            .reduce(
+              (
+                x: { desc: { timestamp: number } },
+                y: { desc: { timestamp: number } },
+              ) => (x?.desc?.timestamp < y?.desc?.timestamp ? y : x),
+            );
           const latestId = latest.desc.dynamic_id_str;
           const latestTime: number = latest.desc.timestamp;
           const username = latest.desc.user_profile.info.uname;
