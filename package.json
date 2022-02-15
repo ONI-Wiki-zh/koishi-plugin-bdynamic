@@ -1,6 +1,6 @@
 {
   "name": "koishi-plugin-bdynamic",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Koishi B站动态推送插件",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
