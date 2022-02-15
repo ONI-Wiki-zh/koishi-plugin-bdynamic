@@ -1,33 +1,32 @@
 {
   "name": "koishi-plugin-bdynamic",
+  "version": "1.0.1",
+  "description": "Koishi B站动态推送插件",
+  "main": "dist/index.js",
+  "typings": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "lint": "eslint . --fix",
     "test": "mocha tests",
     "build": "tsc --build --force",
     "watch": "tsc --watch"
   },
-  "typings": "dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
-  "version": "1.0.0",
-  "description": "Koishi B站动态推送插件",
   "keywords": [
     "koishi",
     "koishi.js"
   ],
-  "main": "dist/index.js",
   "repository": "https://github.com/ONI-Wiki-zh/koishi-plugin-bdynamic.git",
   "author": "DDElephant <andy-ding@outlook.com>",
   "license": "MIT",
   "dependencies": {
     "@koishijs/helpers": "^1.0.0",
     "@koishijs/plugin-rate-limit": "^1.0.1",
-    "axios": "^0.24.0",
-    "koishi": "^4.1.0"
+    "axios": "^0.24.0"
   },
   "peerDependencies": {
-    "koishi": "^4.1.0"
+    "koishi": "^4.2.1"
   },
   "devDependencies": {
     "@koishijs/plugin-adapter-onebot": "^4.0.0",
