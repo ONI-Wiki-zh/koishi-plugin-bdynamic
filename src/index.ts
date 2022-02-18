@@ -176,47 +176,59 @@ export function apply(ctx: Context, config: StrictConfig): void {
   async function subscribe(
     uid: string,
     platform: string,
-    cid: string,
+    channelId: string,
     flags: number,
     assignee: string,
   ): Promise<string> {
-    const record = await feeder.onNewDynamic(uid, platform, cid, async (di) => {
-      if (di.type & flags) return;
-      const dStr = showDynamic(di);
+    const record = await feeder.onNewDynamic(
+      uid,
+      platform,
+      channelId,
+      async (di) => {
+        if (di.type & flags) return;
+        const dStr = showDynamic(di);
 
-      const bot = ctx.bots.filter((b) => b.selfId === assignee)[0];
-      const channel = await ctx.database.getChannel(platform as never, cid);
-      const followers = channel.bDynamics?.[uid]?.follower || [];
-      let atAll = false;
-      if (followers.includes('all')) {
-        if (bot.platform == 'onebot') {
-          const oneBotBot = bot as unknown as OneBotBot;
-          const remain = await oneBotBot.internal.getGroupAtAllRemain(cid);
-          if (remain.can_at_all) {
-            logger.warn(
-              `剩余 @全体成员 次数：${remain.remain_at_all_count_for_uin}`,
+        const bot = ctx.bots.filter((b) => b.selfId === assignee)[0];
+        const channel = await ctx.database.getChannel(
+          platform as never,
+          channelId,
+        );
+        const followers = channel.bDynamics?.[uid]?.follower || [];
+        let atAll = false;
+        if (followers.includes('all')) {
+          if (bot.platform == 'onebot') {
+            const oneBotBot = bot as unknown as OneBotBot;
+            const remain = await oneBotBot.internal.getGroupAtAllRemain(
+              channelId,
             );
+            if (remain.can_at_all) {
+              logger.warn(
+                `剩余 @全体成员 次数：${remain.remain_at_all_count_for_uin}`,
+              );
+              atAll = true;
+            } else logger.warn(`无法在群 ${channelId} 内 @全体成员`);
+          } else {
             atAll = true;
-          } else logger.warn(`无法在群 ${cid} 内 @全体成员`);
-        } else {
-          atAll = true;
+          }
         }
-      }
 
-      let followersMsg = atAll
-        ? segment('at', { type: 'all' })
-        : followers
-            .map((f) =>
-              f == 'all'
-                ? ''
-                : segment('at', { [atType[f] ? 'type' : 'id']: f }),
-            )
-            .join('');
-      if (followersMsg) followersMsg += '\n';
-      await bot.sendMessage(cid, followersMsg + dStr);
-    });
+        let followersMsg = atAll
+          ? segment('at', { type: 'all' })
+          : followers
+              .map((f) =>
+                f == 'all'
+                  ? ''
+                  : segment('at', { [atType[f] ? 'type' : 'id']: f }),
+              )
+              .join('');
+        if (followersMsg) followersMsg += '\n';
+        await ctx.broadcast([`${platform}:${channelId}`], followersMsg + dStr);
+      },
+    );
 
-    logger.info(`Subscribed username ${record.username} in channel ${cid}`);
+    logger.info(
+      `Subscribed username ${record.username} in channel ${channelId}`,
+    );
     return template('bDynamic.add-success', record.username);
   }
 
