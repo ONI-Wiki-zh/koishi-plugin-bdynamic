@@ -1,6 +1,6 @@
 {
   "name": "koishi-plugin-bdynamic",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Koishi B站动态推送插件",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
@@ -26,7 +26,7 @@
     "axios": "^0.24.0"
   },
   "peerDependencies": {
-    "koishi": "^4.2.1"
+    "koishi": "^4.0.0"
   },
   "devDependencies": {
     "@koishijs/plugin-adapter-onebot": "^4.0.0",
@@ -41,6 +41,7 @@
     "eslint": "^8.2.0",
     "eslint-config-prettier": "^8.3.0",
     "eslint-plugin-prettier": "^4.0.0",
+    "koishi": "^4.0.0",
     "mocha": "^9.2.0",
     "nyc": "^15.1.0",
     "prettier": "^2.4.1",
